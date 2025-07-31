@@ -1,0 +1,150 @@
+<div class="dashboard-wrapper">
+  <!-- Connection Status -->
+  <div class="connection-status" [class.connected]="connected" [class.disconnected]="!connected">
+    <mat-icon>{{ connected ? 'wifi' : 'wifi_off' }}</mat-icon>
+    <span>{{ connected ? 'Connected to Home Assistant' : 'Disconnected' }}</span>
+  </div>
+
+  <!-- Loading State -->
+  <div *ngIf="loading" class="loading-container">
+    <mat-spinner diameter="60"></mat-spinner>
+    <p>Loading dashboard...</p>
+  </div>
+
+  <!-- Dashboard Content -->
+  <div *ngIf="!loading && dashboardState" class="dashboard-content">
+    
+    <!-- Summary Cards -->
+    <div class="summary-section">
+      <div *ngFor="let group of [
+        dashboardState.doors,
+        dashboardState.lights,
+        dashboardState.security,
+        dashboardState.climate,
+        dashboardState.media
+      ]" class="summary-card" [class.all-ok]="group.allOk" [class.attention-needed]="!group.allOk">
+        <div class="summary-header">
+          <mat-icon class="summary-icon">{{ getSummaryIcon(group.category) }}</mat-icon>
+          <div class="summary-info">
+            <h3 class="summary-title">{{ group.category }}</h3>
+            <p class="summary-text">{{ group.summary }}</p>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- Individual Device Cards (Only when attention needed) -->
+    <div class="devices-section">
+      
+      <!-- Doors -->
+      <div *ngIf="getVisibleDevices(dashboardState.doors).length > 0" class="device-category">
+        <h2 class="category-title">
+          <mat-icon>door_front</mat-icon>
+          Open Doors
+        </h2>
+        <div class="device-grid">
+          <app-device-card
+            *ngFor="let device of getVisibleDevices(dashboardState.doors)"
+            [device]="device"
+            [icon]="getDeviceIcon(device)"
+            [clickable]="isClickableDevice(device)"
+            (deviceClick)="onDeviceClick($event)">
+          </app-device-card>
+        </div>
+      </div>
+
+      <!-- Lights -->
+      <div *ngIf="getVisibleDevices(dashboardState.lights).length > 0" class="device-category">
+        <h2 class="category-title">
+          <mat-icon>lightbulb</mat-icon>
+          Active Lights
+        </h2>
+        <div class="device-grid">
+          <app-device-card
+            *ngFor="let device of getVisibleDevices(dashboardState.lights)"
+            [device]="device"
+            [icon]="getDeviceIcon(device)"
+            [clickable]="isClickableDevice(device)"
+            (deviceClick)="onDeviceClick($event)">
+          </app-device-card>
+        </div>
+      </div>
+
+      <!-- Security -->
+      <div *ngIf="getVisibleDevices(dashboardState.security).length > 0" class="device-category">
+        <h2 class="category-title">
+          <mat-icon>security</mat-icon>
+          Security Alerts
+        </h2>
+        <div class="device-grid">
+          <app-device-card
+            *ngFor="let device of getVisibleDevices(dashboardState.security)"
+            [device]="device"
+            [icon]="getDeviceIcon(device)"
+            [clickable]="isClickableDevice(device)"
+            (deviceClick)="onDeviceClick($event)">
+          </app-device-card>
+        </div>
+      </div>
+
+      <!-- Climate (Always show some climate info) -->
+      <div *ngIf="dashboardState.climate" class="device-category">
+        <h2 class="category-title">
+          <mat-icon>thermostat</mat-icon>
+          Climate
+        </h2>
+        <div class="device-grid">
+          <app-device-card
+            *ngFor="let device of dashboardState.climate.devices.slice(0, 4)"
+            [device]="device"
+            [icon]="getDeviceIcon(device)"
+            [clickable]="isClickableDevice(device)"
+            (deviceClick)="onDeviceClick($event)">
+          </app-device-card>
+        </div>
+      </div>
+
+      <!-- Active Media Players -->
+      <div *ngIf="getVisibleDevices(dashboardState.media).length > 0" class="device-category">
+        <h2 class="category-title">
+          <mat-icon>play_circle</mat-icon>
+          Active Media
+        </h2>
+        <div class="device-grid">
+          <app-device-card
+            *ngFor="let device of getVisibleDevices(dashboardState.media)"
+            [device]="device"
+            [icon]="getDeviceIcon(device)"
+            [clickable]="isClickableDevice(device)"
+            (deviceClick)="onDeviceClick($event)">
+          </app-device-card>
+        </div>
+      </div>
+
+    </div>
+
+    <!-- All Clear State -->
+    <div *ngIf="dashboardState.doors.allOk && 
+                dashboardState.lights.allOk && 
+                dashboardState.security.allOk &&
+                getVisibleDevices(dashboardState.media).length === 0" 
+         class="all-clear">
+      <mat-icon class="all-clear-icon">check_circle</mat-icon>
+      <h2>All Systems Normal</h2>
+      <p>Your home is secure and all devices are in their expected states.</p>
+    </div>
+
+  </div>
+
+  <!-- Error State -->
+  <div *ngIf="!loading && !dashboardState && !connected" class="error-state">
+    <mat-icon class="error-icon">error_outline</mat-icon>
+    <h2>Unable to Connect</h2>
+    <p>Cannot connect to Home Assistant. Please check your connection.</p>
+    <button mat-raised-button color="primary" (click)="ngOnInit()">
+      <mat-icon>refresh</mat-icon>
+      Retry Connection
+    </button>
+  </div>
+
+</div>

@@ -1,0 +1,21 @@
+<div [class]="getCardClass()" (click)="onCardClick()">
+  <div class="device-content">
+    <mat-icon class="device-icon">{{ icon }}</mat-icon>
+    <div class="device-info">
+      <div class="device-name">{{ device.name }}</div>
+      <div class="device-status">{{ getDeviceStatus() }}</div>
+      <div *ngIf="device.area" class="device-area">{{ device.area }}</div>
+    </div>
+  </div>
+  
+  <!-- Additional info for specific device types -->
+  <div *ngIf="device.domain === 'media_player' && device.attributes?.mediaArtist" 
+       class="media-info">
+    <div class="media-artist">{{ device.attributes.mediaArtist }}</div>
+  </div>
+  
+  <!-- Clickable indicator -->
+  <div *ngIf="clickable" class="click-indicator">
+    <mat-icon>touch_app</mat-icon>
+  </div>
+</div>

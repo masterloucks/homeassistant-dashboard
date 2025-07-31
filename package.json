@@ -1,0 +1,19 @@
+{
+  "name": "homeassistant-dashboard",
+  "version": "1.0.0",
+  "description": "Angular dashboard for Home Assistant integration",
+  "main": "index.js",
+  "scripts": {
+    "frontend": "cd frontend && npm start",
+    "backend": "cd backend && npm start",
+    "dev": "concurrently \"npm run backend\" \"npm run frontend\"",
+    "build": "cd frontend && npm run build",
+    "install-all": "npm install && cd frontend && npm install && cd ../backend && npm install"
+  },
+  "keywords": ["angular", "home-assistant", "dashboard", "smart-home"],
+  "author": "Jason Loucks",
+  "license": "MIT",
+  "devDependencies": {
+    "concurrently": "^8.2.2"
+  }
+}

@@ -1,0 +1,144 @@
+// Custom Dark Theme for Home Assistant Dashboard
+@use '@angular/material' as mat;
+
+// Define a custom dark theme
+$dark-primary: mat.define-palette(mat.$blue-palette, 400);
+$dark-accent: mat.define-palette(mat.$amber-palette, 400);
+$dark-warn: mat.define-palette(mat.$red-palette, 400);
+
+$dark-theme: mat.define-dark-theme((
+  color: (
+    primary: $dark-primary,
+    accent: $dark-accent,
+    warn: $dark-warn,
+  ),
+  typography: mat.define-typography-config(),
+  density: 0,
+));
+
+// Apply the theme
+@include mat.all-component-themes($dark-theme);
+
+// Global dark theme styles
+html, body {
+  height: 100%;
+  margin: 0;
+  padding: 0;
+  font-family: 'Roboto', sans-serif;
+  background-color: #121212;
+  color: #ffffff;
+}
+
+// Custom dashboard styles
+.dashboard-container {
+  padding: 16px;
+  min-height: 100vh;
+  background: linear-gradient(135deg, #1a1a1a 0%, #2d2d2d 100%);
+}
+
+.device-grid {
+  display: grid;
+  gap: 16px;
+  grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));
+  
+  @media (min-width: 768px) {
+    grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+  }
+  
+  @media (min-width: 1200px) {
+    grid-template-columns: repeat(auto-fit, minmax(250px, 1fr));
+  }
+}
+
+.device-card {
+  background: rgba(255, 255, 255, 0.05);
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  border-radius: 12px;
+  padding: 20px;
+  text-align: center;
+  cursor: pointer;
+  transition: all 0.3s ease;
+  backdrop-filter: blur(10px);
+  
+  &:hover {
+    background: rgba(255, 255, 255, 0.1);
+    border-color: rgba(255, 255, 255, 0.2);
+    transform: translateY(-2px);
+    box-shadow: 0 8px 32px rgba(0, 0, 0, 0.3);
+  }
+  
+  &.active {
+    border-color: #4fc3f7;
+    background: rgba(79, 195, 247, 0.1);
+  }
+  
+  &.warning {
+    border-color: #ffb74d;
+    background: rgba(255, 183, 77, 0.1);
+  }
+}
+
+.device-icon {
+  font-size: 48px;
+  margin-bottom: 12px;
+  display: block;
+  
+  @media (min-width: 1200px) {
+    font-size: 64px;
+  }
+}
+
+.device-name {
+  font-size: 14px;
+  font-weight: 500;
+  margin-bottom: 8px;
+  
+  @media (min-width: 1200px) {
+    font-size: 16px;
+  }
+}
+
+.device-status {
+  font-size: 12px;
+  opacity: 0.7;
+  
+  @media (min-width: 1200px) {
+    font-size: 14px;
+  }
+}
+
+.summary-card {
+  background: rgba(255, 255, 255, 0.08);
+  border: 1px solid rgba(255, 255, 255, 0.15);
+  border-radius: 16px;
+  padding: 24px;
+  margin-bottom: 24px;
+  backdrop-filter: blur(10px);
+}
+
+.summary-title {
+  font-size: 18px;
+  font-weight: 600;
+  margin-bottom: 16px;
+  color: #4fc3f7;
+}
+
+// Loading spinner
+.loading-container {
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  height: 200px;
+}
+
+// Touch-friendly for mobile and tablets
+@media (max-width: 767px) {
+  .device-card {
+    padding: 24px;
+    min-height: 120px;
+  }
+  
+  .device-icon {
+    font-size: 56px;
+  }
+}
