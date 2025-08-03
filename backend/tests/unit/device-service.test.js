@@ -1,0 +1,180 @@
+const DeviceService = require('../../src/device-service');
+const fixtures = require('../fixtures/sample-devices');
+
+// Mock the MCP client
+jest.mock('../../src/mcp-client', () => ({
+  getLiveContext: jest.fn(),
+  turnOn: jest.fn(),
+  turnOff: jest.fn(),
+  setLightBrightness: jest.fn(),
+  isConnected: jest.fn(() => true)
+}));
+
+describe('DeviceService', () => {
+  beforeEach(() => {
+    // Reset any cached state
+    DeviceService.lastKnownState = null;
+    jest.clearAllMocks();
+  });
+
+  describe('parseLiveContext', () => {
+    it('should parse MCP live context response correctly', () => {
+      const result = DeviceService.parseLiveContext(fixtures.mockMCPResponse);
+      
+      expect(result).toHaveLength(5);
+      expect(result[0]).toEqual(fixtures.parsedDevices[0]);
+      expect(result[1]).toEqual(fixtures.parsedDevices[1]);
+    });
+
+    it('should handle empty or invalid context data', () => {
+      const result = DeviceService.parseLiveContext(null);
+      expect(result).toEqual([]);
+
+      const result2 = DeviceService.parseLiveContext({ result: '' });
+      expect(result2).toEqual([]);
+    });
+
+    it('should filter out unavailable devices', () => {
+      const contextWithUnavailable = {
+        result: `Live Context: Test
+- names: Available Light
+  domain: light
+  state: 'on'
+- names: Unavailable Light
+  domain: light
+  state: 'unavailable'`
+      };
+
+      const result = DeviceService.parseLiveContext(contextWithUnavailable);
+      expect(result).toHaveLength(1);
+      expect(result[0].name).toBe('Available Light');
+    });
+  });
+
+  describe('categorizeDevices', () => {
+    const testDevices = fixtures.parsedDevices;
+
+    it('should categorize light devices correctly', () => {
+      const result = DeviceService.categorizeDevices(testDevices, 'lights');
+      
+      expect(result.category).toBe('Lights');
+      expect(result.devices).toHaveLength(2);
+      expect(result.devices.every(d => d.domain === 'light')).toBe(true);
+      expect(result.summary).toBe('1 light(s) currently on');
+      expect(result.allOk).toBe(false); // Because lights are on
+    });
+
+    it('should categorize door devices correctly', () => {
+      const result = DeviceService.categorizeDevices(testDevices, 'doors');
+      
+      expect(result.category).toBe('Doors');
+      expect(result.devices).toHaveLength(1);
+      expect(result.devices[0].domain).toBe('binary_sensor');
+      expect(result.summary).toBe('All doors closed and locked');
+      expect(result.allOk).toBe(true); // Door is closed
+    });
+
+    it('should categorize climate devices correctly', () => {
+      const result = DeviceService.categorizeDevices(testDevices, 'climate');
+      
+      expect(result.category).toBe('Climate');
+      expect(result.devices).toHaveLength(1);
+      expect(result.devices[0].domain).toBe('climate');
+      expect(result.allOk).toBe(true); // Climate doesn't have "all OK" state
+    });
+
+    it('should categorize media devices correctly', () => {
+      const result = DeviceService.categorizeDevices(testDevices, 'media');
+      
+      expect(result.category).toBe('Media');
+      expect(result.devices).toHaveLength(1);
+      expect(result.devices[0].domain).toBe('media_player');
+      expect(result.summary).toBe('1 media player(s) active');
+      expect(result.allOk).toBe(false); // Media is playing
+    });
+
+    it('should handle empty device list', () => {
+      const result = DeviceService.categorizeDevices([], 'lights');
+      
+      expect(result.category).toBe('Lights');
+      expect(result.devices).toHaveLength(0);
+      expect(result.summary).toBe('All lights are off');
+      expect(result.allOk).toBe(true);
+    });
+  });
+
+  describe('calculateAverageTemperature', () => {
+    it('should calculate average temperature correctly', () => {
+      const tempDevices = fixtures.temperatureDevices;
+      const result = DeviceService.calculateAverageTemperature(tempDevices);
+      
+      // (72 + 70 + 68) / 3 = 70
+      expect(result).toBe(70);
+    });
+
+    it('should return null for no temperature devices', () => {
+      const result = DeviceService.calculateAverageTemperature([]);
+      expect(result).toBeNull();
+    });
+
+    it('should handle invalid temperature values', () => {
+      const invalidTempDevices = [
+        {
+          domain: 'sensor',
+          state: 'invalid',
+          attributes: { device_class: 'temperature' }
+        }
+      ];
+      
+      const result = DeviceService.calculateAverageTemperature(invalidTempDevices);
+      expect(result).toBeNull();
+    });
+  });
+
+  describe('findDeviceById', () => {
+    beforeEach(() => {
+      // Set up mock state
+      DeviceService.lastKnownState = {
+        lights: { devices: [fixtures.parsedDevices[0]] },
+        doors: { devices: [fixtures.parsedDevices[2]] },
+        climate: { devices: [fixtures.parsedDevices[3]] },
+        security: { devices: [] },
+        media: { devices: [fixtures.parsedDevices[4]] }
+      };
+    });
+
+    it('should find device by exact ID match', async () => {
+      const result = await DeviceService.findDeviceById('Kitchen Light');
+      expect(result).toEqual(fixtures.parsedDevices[0]);
+    });
+
+    it('should find device by name match', async () => {
+      const result = await DeviceService.findDeviceById('Front Door');
+      expect(result).toEqual(fixtures.parsedDevices[2]);
+    });
+
+    it('should return undefined for non-existent device', async () => {
+      const result = await DeviceService.findDeviceById('Non Existent Device');
+      expect(result).toBeUndefined();
+    });
+  });
+
+  describe('getDefaultDashboardState', () => {
+    it('should return proper default state structure', () => {
+      const result = DeviceService.getDefaultDashboardState();
+      
+      expect(result).toHaveProperty('doors');
+      expect(result).toHaveProperty('lights');
+      expect(result).toHaveProperty('climate');
+      expect(result).toHaveProperty('security');
+      expect(result).toHaveProperty('media');
+      
+      // All categories should indicate connection failure
+      Object.values(result).forEach(category => {
+        expect(category.summary).toContain('Unable to connect');
+        expect(category.allOk).toBe(false);
+        expect(category.devices).toEqual([]);
+      });
+    });
+  });
+});

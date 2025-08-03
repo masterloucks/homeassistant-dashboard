@@ -37,7 +37,10 @@ class DeviceService {
 
     // Parse the context string to extract device information
     const contextText = contextData.result;
-    const lines = contextText.split('\\n');
+    console.log('Raw context text:', contextText.substring(0, 200) + '...');
+    const lines = contextText.split('\n');
+    console.log('Number of lines:', lines.length);
+    console.log('First few lines:', lines.slice(0, 5));
     
     let currentDevice = null;
     
@@ -46,12 +49,12 @@ class DeviceService {
       if (!trimmedLine || trimmedLine.startsWith('Live Context:')) continue;
       
       // Look for device entries
-      if (trimmedLine.startsWith('- names:')) {
+      if (line.startsWith('- names:')) {
         if (currentDevice) {
           devices.push(currentDevice);
         }
         
-        const nameMatch = trimmedLine.match(/- names:\\s*(.+)/);
+        const nameMatch = line.match(/- names:\s*(.+)/);
         if (nameMatch) {
           currentDevice = {
             id: nameMatch[1].trim().replace(/'/g, ''),
@@ -71,9 +74,11 @@ class DeviceService {
           currentDevice.area = trimmedLine.replace('areas:', '').trim();
         } else if (trimmedLine.startsWith('attributes:')) {
           // Start parsing attributes
-        } else if (trimmedLine.includes(':') && !trimmedLine.startsWith('-')) {
+        } else if (trimmedLine.includes(':') && !trimmedLine.startsWith('-') && trimmedLine.indexOf(':') > 0) {
           // Parse attribute
-          const [key, value] = trimmedLine.split(':').map(s => s.trim());
+          const colonIndex = trimmedLine.indexOf(':');
+          const key = trimmedLine.substring(0, colonIndex).trim();
+          const value = trimmedLine.substring(colonIndex + 1).trim();
           if (key && value) {
             currentDevice.attributes[key] = value.replace(/'/g, '');
           }
@@ -86,7 +91,11 @@ class DeviceService {
       devices.push(currentDevice);
     }
     
-    return devices.filter(device => device.domain && device.state !== 'unavailable');
+    const filteredDevices = devices.filter(device => device.domain && device.state !== 'unavailable');
+    console.log('Parsed devices:', filteredDevices.length);
+    console.log('Light devices:', filteredDevices.filter(d => d.domain === 'light'));
+    
+    return filteredDevices;
   }
 
   categorizeDevices(devices, category) {
