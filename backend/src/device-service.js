@@ -1,4 +1,5 @@
 const mcpClient = require('./mcp-client');
+const deviceCache = require('./device-cache');
 
 class DeviceService {
   constructor() {
@@ -7,15 +8,37 @@ class DeviceService {
 
   async getDashboardState() {
     try {
-      const liveContext = await mcpClient.getLiveContext();
-      const devices = this.parseLiveContext(liveContext);
+      // Check MCP connection status
+      if (!mcpClient.isConnected()) {
+        console.log('DeviceService: MCP client not connected, using cached data');
+        console.log('DeviceService: Connection status:', mcpClient.getConnectionStatus());
+      } else {
+        // TEMP: Test if MCP is working by calling directly
+        console.log('DeviceService: Testing direct MCP call...');
+        const directContext = await mcpClient.getLiveContext();
+        console.log('DeviceService: Direct MCP response:', directContext ? 'received' : 'null');
+        if (directContext && directContext.result) {
+          console.log('DeviceService: Direct context length:', directContext.result.length);
+        }
+      }
+      
+      // Get devices from cache (auto-refreshes as needed)
+      const devices = deviceCache.getCachedDevices();
       
       const dashboardState = {
         doors: this.categorizeDevices(devices, 'doors'),
         lights: this.categorizeDevices(devices, 'lights'),
         climate: this.categorizeDevices(devices, 'climate'),
         security: this.categorizeDevices(devices, 'security'),
-        media: this.categorizeDevices(devices, 'media')
+        media: this.categorizeDevices(devices, 'media'),
+        
+        // Add metadata for dashboard footer
+        metadata: {
+          deviceCount: deviceCache.getDeviceCount(),
+          lastUpdate: deviceCache.getLastUpdateTime(),
+          timeSinceLastUpdate: deviceCache.getTimeSinceLastUpdate(),
+          performanceStats: deviceCache.getPerformanceStats()
+        }
       };
 
       this.lastKnownState = dashboardState;
@@ -27,76 +50,29 @@ class DeviceService {
     }
   }
 
-  parseLiveContext(contextData) {
-    const devices = [];
-    
-    if (!contextData || !contextData.result) {
-      console.warn('No context data received from MCP');
-      return devices;
-    }
-
-    // Parse the context string to extract device information
-    const contextText = contextData.result;
-    console.log('Raw context text:', contextText.substring(0, 200) + '...');
-    const lines = contextText.split('\n');
-    console.log('Number of lines:', lines.length);
-    console.log('First few lines:', lines.slice(0, 5));
-    
-    let currentDevice = null;
-    
-    for (const line of lines) {
-      const trimmedLine = line.trim();
-      if (!trimmedLine || trimmedLine.startsWith('Live Context:')) continue;
+  async manualDeviceRefresh() {
+    try {
+      console.log('Manual device refresh requested');
+      const result = await deviceCache.manualRefresh();
       
-      // Look for device entries
-      if (line.startsWith('- names:')) {
-        if (currentDevice) {
-          devices.push(currentDevice);
-        }
-        
-        const nameMatch = line.match(/- names:\s*(.+)/);
-        if (nameMatch) {
-          currentDevice = {
-            id: nameMatch[1].trim().replace(/'/g, ''),
-            name: nameMatch[1].trim().replace(/'/g, ''),
-            domain: '',
-            state: '',
-            area: '',
-            attributes: {}
-          };
-        }
-      } else if (currentDevice) {
-        if (trimmedLine.startsWith('domain:')) {
-          currentDevice.domain = trimmedLine.replace('domain:', '').trim();
-        } else if (trimmedLine.startsWith('state:')) {
-          currentDevice.state = trimmedLine.replace('state:', '').trim().replace(/'/g, '');
-        } else if (trimmedLine.startsWith('areas:')) {
-          currentDevice.area = trimmedLine.replace('areas:', '').trim();
-        } else if (trimmedLine.startsWith('attributes:')) {
-          // Start parsing attributes
-        } else if (trimmedLine.includes(':') && !trimmedLine.startsWith('-') && trimmedLine.indexOf(':') > 0) {
-          // Parse attribute
-          const colonIndex = trimmedLine.indexOf(':');
-          const key = trimmedLine.substring(0, colonIndex).trim();
-          const value = trimmedLine.substring(colonIndex + 1).trim();
-          if (key && value) {
-            currentDevice.attributes[key] = value.replace(/'/g, '');
-          }
-        }
-      }
+      // Return updated dashboard state
+      const dashboardState = await this.getDashboardState();
+      return {
+        success: true,
+        message: `Refreshed ${result.deviceCount} devices`,
+        dashboardState,
+        refreshInfo: result
+      };
+    } catch (error) {
+      console.error('Error in manual device refresh:', error);
+      return {
+        success: false,
+        message: error.message
+      };
     }
-    
-    // Don't forget the last device
-    if (currentDevice) {
-      devices.push(currentDevice);
-    }
-    
-    const filteredDevices = devices.filter(device => device.domain && device.state !== 'unavailable');
-    console.log('Parsed devices:', filteredDevices.length);
-    console.log('Light devices:', filteredDevices.filter(d => d.domain === 'light'));
-    
-    return filteredDevices;
   }
+
+  // parseLiveContext method moved to DeviceCache class
 
   categorizeDevices(devices, category) {
     let filteredDevices = [];

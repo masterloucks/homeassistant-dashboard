@@ -6,6 +6,7 @@ export interface Device {
   area?: string;
   attributes?: DeviceAttributes;
   deviceClass?: string;
+  lastChanged?: number;
 }
 
 export interface DeviceAttributes {
@@ -40,10 +41,18 @@ export interface DeviceGroup {
   allOk: boolean;
 }
 
+export interface DashboardMetadata {
+  deviceCount: number;
+  lastUpdate: number;
+  timeSinceLastUpdate: number;
+  lastDiscovery: number;
+}
+
 export interface DashboardState {
   doors: DeviceGroup;
   lights: DeviceGroup;
   climate: DeviceGroup;
   security: DeviceGroup;
   media: DeviceGroup;
+  metadata?: DashboardMetadata;
 }

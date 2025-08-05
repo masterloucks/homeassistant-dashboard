@@ -47,12 +47,12 @@ export class DeviceCardComponent {
       
       case 'climate':
         const temp = this.device.attributes?.temperature;
-        const currentTemp = this.device.attributes?.currentTemperature;
+        const currentTemp = this.device.attributes?.['currentTemperature'];
         return currentTemp ? `${currentTemp}°F` : temp ? `Set: ${temp}°F` : this.device.state;
       
       case 'media_player':
         if (this.device.state === 'playing') {
-          return this.device.attributes?.mediaTitle || 'Playing';
+          return this.device.attributes?.['mediaTitle'] || 'Playing';
         }
         return this.capitalizeFirst(this.device.state);
       

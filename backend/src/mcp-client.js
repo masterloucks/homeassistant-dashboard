@@ -12,6 +12,19 @@ class MCPClient {
     this.sessionId = null;
     this.httpClient = null;
     this.currentEventType = null;
+    
+    // Reconnection properties
+    this.reconnectAttempts = 0;
+    this.maxReconnectAttempts = 10;
+    this.reconnectDelay = 1000; // Start with 1 second
+    this.maxReconnectDelay = 30000; // Max 30 seconds
+    this.reconnectTimer = null;
+    this.isReconnecting = false;
+    
+    // Connection monitoring
+    this.lastActivity = Date.now();
+    this.healthCheckInterval = null;
+    this.connectionRequest = null;
   }
 
   async initialize() {
@@ -20,10 +33,85 @@ class MCPClient {
     try {
       await this.connectToMCPServer();
       console.log('Successfully connected to Home Assistant MCP server');
+      this.reconnectAttempts = 0; // Reset on successful connection
+      this.startHealthCheck();
     } catch (error) {
       console.error('Failed to connect to MCP server:', error.message);
       this.connected = false;
-      // Don't throw - let the app run with fallback
+      this.scheduleReconnect();
+    }
+  }
+
+  scheduleReconnect() {
+    if (this.isReconnecting || this.reconnectAttempts >= this.maxReconnectAttempts) {
+      if (this.reconnectAttempts >= this.maxReconnectAttempts) {
+        console.error('Max reconnection attempts reached. Will retry in 5 minutes.');
+        this.reconnectTimer = setTimeout(() => {
+          this.reconnectAttempts = 0;
+          this.scheduleReconnect();
+        }, 300000); // 5 minutes
+      }
+      return;
+    }
+
+    this.isReconnecting = true;
+    this.reconnectAttempts++;
+    
+    const delay = Math.min(
+      this.reconnectDelay * Math.pow(2, this.reconnectAttempts - 1),
+      this.maxReconnectDelay
+    );
+    
+    console.log(`Scheduling reconnection attempt ${this.reconnectAttempts}/${this.maxReconnectAttempts} in ${delay}ms`);
+    
+    this.reconnectTimer = setTimeout(async () => {
+      this.isReconnecting = false;
+      console.log(`Attempting to reconnect (${this.reconnectAttempts}/${this.maxReconnectAttempts})...`);
+      
+      try {
+        await this.connectToMCPServer();
+        console.log('Reconnection successful!');
+        this.reconnectAttempts = 0;
+        this.startHealthCheck();
+      } catch (error) {
+        console.error('Reconnection failed:', error.message);
+        this.connected = false;
+        this.scheduleReconnect();
+      }
+    }, delay);
+  }
+
+  startHealthCheck() {
+    this.stopHealthCheck();
+    
+    this.healthCheckInterval = setInterval(() => {
+      const timeSinceLastActivity = Date.now() - this.lastActivity;
+      
+      // If no activity for 60 seconds, consider connection stale
+      if (timeSinceLastActivity > 60000) {
+        console.warn('MCP connection appears stale, attempting reconnection...');
+        this.connected = false;
+        this.scheduleReconnect();
+      }
+    }, 30000); // Check every 30 seconds
+  }
+
+  stopHealthCheck() {
+    if (this.healthCheckInterval) {
+      clearInterval(this.healthCheckInterval);
+      this.healthCheckInterval = null;
+    }
+  }
+
+  cleanup() {
+    this.stopHealthCheck();
+    if (this.reconnectTimer) {
+      clearTimeout(this.reconnectTimer);
+      this.reconnectTimer = null;
+    }
+    if (this.connectionRequest) {
+      this.connectionRequest.destroy();
+      this.connectionRequest = null;
     }
   }
 
@@ -77,10 +165,12 @@ class MCPClient {
         }
         
         console.log('SSE connection established');
+        this.lastActivity = Date.now();
         
         let buffer = '';
         
         res.on('data', (chunk) => {
+          this.lastActivity = Date.now();
           buffer += chunk.toString();
           const lines = buffer.split('\n');
           buffer = lines.pop(); // Keep incomplete line in buffer
@@ -93,10 +183,12 @@ class MCPClient {
         res.on('end', () => {
           console.log('SSE connection ended');
           this.connected = false;
+          this.scheduleReconnect();
         });
         
         res.on('error', (error) => {
           console.error('SSE response error:', error);
+          this.connected = false;
           reject(error);
         });
         
@@ -104,28 +196,32 @@ class MCPClient {
         setTimeout(async () => {
           if (this.mcpEndpoint) {
             console.log('MCP endpoint ready, initializing session...');
-            this.connected = true; // Set connected before attempting session init
             try {
               await this.initializeMCPSession();
               console.log('MCP session initialized successfully');
+              this.connected = true; // Only set connected after successful session init
               resolve();
             } catch (error) {
               console.error('Failed to initialize MCP session:', error);
-              resolve(); // Still resolve to allow the app to work
+              this.connected = false;
+              reject(error);
             }
           } else {
-            console.log('No MCP endpoint received, but proceeding anyway');
-            this.connected = true; // Allow the app to work even without proper endpoint
-            resolve();
+            console.log('No MCP endpoint received');
+            this.connected = false;
+            reject(new Error('No MCP endpoint received from server'));
           }
         }, 2000);
       });
       
       req.on('error', (error) => {
         console.error('SSE request error:', error);
+        this.connected = false;
         reject(error);
       });
       
+      // Store the request for cleanup
+      this.connectionRequest = req;
       req.end();
     });
   }
@@ -145,16 +241,16 @@ class MCPClient {
         name: 'dashboard-backend',
         version: '1.0.0'
       }
-    });
+    }, true); // Allow during initialization
     
     console.log('MCP session initialized:', initResponse);
     
     // Send initialized notification
-    await this.sendMCPNotification('notifications/initialized');
+    await this.sendMCPNotification('notifications/initialized', {}, true); // Allow during initialization
     
     // Query available tools
     try {
-      const toolsResponse = await this.sendMCPRequest('tools/list');
+      const toolsResponse = await this.sendMCPRequest('tools/list', {}, true); // Allow during initialization
       console.log('Available MCP tools:', toolsResponse);
     } catch (error) {
       console.error('Failed to list MCP tools:', error);
@@ -197,9 +293,30 @@ class MCPClient {
     }
   }
   
-  async sendMCPRequest(method, params = {}) {
-    if (!this.connected || !this.httpClient || !this.mcpEndpoint) {
-      throw new Error('MCP client not connected');
+  isConnected() {
+    return this.connected && this.httpClient && this.mcpEndpoint;
+  }
+
+  getConnectionStatus() {
+    return {
+      connected: this.connected,
+      hasHttpClient: !!this.httpClient,
+      hasEndpoint: !!this.mcpEndpoint,
+      reconnectAttempts: this.reconnectAttempts,
+      isReconnecting: this.isReconnecting,
+      lastActivity: this.lastActivity
+    };
+  }
+
+  async sendMCPRequest(method, params = {}, allowDuringInit = false) {
+    // Allow initialization requests even when not fully connected
+    if (!allowDuringInit && !this.isConnected()) {
+      throw new Error(`MCP client not connected. Status: ${JSON.stringify(this.getConnectionStatus())}`);
+    }
+    
+    // For initialization, we only need httpClient and mcpEndpoint
+    if (!this.httpClient || !this.mcpEndpoint) {
+      throw new Error(`MCP client missing required components. Status: ${JSON.stringify(this.getConnectionStatus())}`);
     }
     
     return new Promise((resolve, reject) => {
@@ -234,9 +351,15 @@ class MCPClient {
     });
   }
   
-  async sendMCPNotification(method, params = {}) {
-    if (!this.connected || !this.httpClient || !this.mcpEndpoint) {
+  async sendMCPNotification(method, params = {}, allowDuringInit = false) {
+    // Allow initialization notifications even when not fully connected
+    if (!allowDuringInit && !this.isConnected()) {
       throw new Error('MCP client not connected');
+    }
+    
+    // For initialization, we only need httpClient and mcpEndpoint
+    if (!this.httpClient || !this.mcpEndpoint) {
+      throw new Error('MCP client missing required components');
     }
     
     const notification = {
@@ -251,66 +374,23 @@ class MCPClient {
   }
   
   async getLiveContext() {
-    // For now, use a simplified approach that directly gets data from Home Assistant
-    // This bypasses the MCP connection issues temporarily
+    const startTime = Date.now();
+    console.log('[MCP-PERF] Starting getLiveContext call...');
     
     try {
-      if (!this.httpClient) {
-        // Initialize HTTP client if not already done
-        const haUrl = process.env.HOME_ASSISTANT_URL || 'http://192.168.0.159:8123';
-        const token = process.env.HOME_ASSISTANT_TOKEN;
-        
-        this.httpClient = axios.create({
-          baseURL: haUrl,
-          headers: {
-            'Authorization': `Bearer ${token}`,
-            'Content-Type': 'application/json'
-          },
-          timeout: 10000
-        });
-      }
-      
-      // Get current device states from Home Assistant API
-      const statesResponse = await this.httpClient.get('/api/states');
-      const devices = statesResponse.data;
-      
-      // Convert to MCP-like format that our parser expects
-      let mcpFormat = 'Live Context: An overview of the areas and the devices in this smart home:\n';
-      
-      devices.forEach(device => {
-        if (device.state !== 'unavailable' && device.state !== 'unknown') {
-          const entityName = device.attributes.friendly_name || device.entity_id;
-          const domain = device.entity_id.split('.')[0];
-          
-          mcpFormat += `- names: '${entityName}'\n`;
-          mcpFormat += `  domain: ${domain}\n`;
-          mcpFormat += `  state: '${device.state}'\n`;
-          
-          if (device.attributes.area_id) {
-            mcpFormat += `  areas: ${device.attributes.area_id}\n`;
-          }
-          
-          mcpFormat += `  attributes:\n`;
-          if (device.attributes.brightness) {
-            mcpFormat += `    brightness: '${device.attributes.brightness}'\n`;
-          }
-          if (device.attributes.device_class) {
-            mcpFormat += `    device_class: ${device.attributes.device_class}\n`;
-          }
-          if (device.attributes.unit_of_measurement) {
-            mcpFormat += `    unit_of_measurement: ${device.attributes.unit_of_measurement}\n`;
-          }
-          if (device.attributes.percentage !== undefined) {
-            mcpFormat += `    percentage: '${device.attributes.percentage}'\n`;
-          }
-        }
+      const response = await this.sendMCPRequest('tools/call', {
+        name: 'GetLiveContext',
+        arguments: {}
       });
       
-      return {
-        result: mcpFormat
-      };
+      const duration = Date.now() - startTime;
+      const responseSize = JSON.stringify(response).length;
+      console.log(`[MCP-PERF] getLiveContext completed in ${duration}ms, response size: ${responseSize} bytes`);
+      
+      return response;
     } catch (error) {
-      console.error('Error getting live context from Home Assistant:', error.message);
+      const duration = Date.now() - startTime;
+      console.error(`[MCP-PERF] getLiveContext failed after ${duration}ms:`, error.message);
       throw error;
     }
   }

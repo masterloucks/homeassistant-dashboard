@@ -11,6 +11,7 @@ import { takeUntil } from 'rxjs/operators';
 import { HomeAssistantService } from '../../services/homeassistant.service';
 import { DashboardState, Device, DeviceGroup } from '../../models/device.model';
 import { DeviceCardComponent } from '../device-card/device-card.component';
+import { CameraGridComponent } from '../camera-grid/camera-grid.component';
 
 @Component({
   selector: 'app-dashboard',
@@ -22,7 +23,8 @@ import { DeviceCardComponent } from '../device-card/device-card.component';
     MatButtonModule,
     MatProgressSpinnerModule,
     MatSnackBarModule,
-    DeviceCardComponent
+    DeviceCardComponent,
+    CameraGridComponent
   ],
   templateUrl: './dashboard.component.html',
   styleUrls: ['./dashboard.component.scss']
@@ -159,5 +161,141 @@ export class DashboardComponent implements OnInit, OnDestroy {
       case 'media': return 'play_circle';
       default: return 'home';
     }
+  }
+
+  getDeviceCount(): number {
+    if (!this.dashboardState) return 0;
+    
+    let totalDevices = 0;
+    totalDevices += this.dashboardState.doors?.devices?.length || 0;
+    totalDevices += this.dashboardState.lights?.devices?.length || 0;
+    totalDevices += this.dashboardState.security?.devices?.length || 0;
+    totalDevices += this.dashboardState.climate?.devices?.length || 0;
+    totalDevices += this.dashboardState.media?.devices?.length || 0;
+    
+    return totalDevices;
+  }
+
+  getLastUpdateTime(): string {
+    if (!this.dashboardState?.metadata?.lastUpdate) {
+      return 'Never';
+    }
+    
+    // Format to MT timezone
+    const updateTime = new Date(this.dashboardState.metadata.lastUpdate);
+    return updateTime.toLocaleTimeString('en-US', {
+      timeZone: 'America/Denver',
+      hour: 'numeric',
+      minute: '2-digit',
+      second: '2-digit',
+      hour12: true,
+      timeZoneName: 'short'
+    });
+  }
+
+
+  getLastActivityTime(group: DeviceGroup): string {
+    if (!group.devices || group.devices.length === 0) {
+      return 'Never';
+    }
+
+    // Find the most recent activity in this group
+    let mostRecentActivity = 0;
+    
+    for (const device of group.devices) {
+      if (device.lastChanged) {
+        mostRecentActivity = Math.max(mostRecentActivity, device.lastChanged);
+      }
+    }
+
+    if (mostRecentActivity === 0) {
+      return 'Unknown';
+    }
+
+    // Format to MT timezone
+    const activityTime = new Date(mostRecentActivity);
+    const now = new Date();
+    const diffMs = now.getTime() - activityTime.getTime();
+    const diffHours = diffMs / (1000 * 60 * 60);
+
+    if (diffHours < 1) {
+      const diffMinutes = Math.floor(diffMs / (1000 * 60));
+      return `${diffMinutes}m ago`;
+    } else if (diffHours < 24) {
+      return `${Math.floor(diffHours)}h ago`;
+    } else {
+      return activityTime.toLocaleDateString('en-US', {
+        timeZone: 'America/Denver',
+        month: 'short',
+        day: 'numeric',
+        hour: 'numeric',
+        minute: '2-digit',
+        hour12: true
+      });
+    }
+  }
+
+  onDeviceCountClick(): void {
+    console.log('Manual refresh triggered from device count click');
+    this.loading = true;
+    
+    this.haService.refreshDevices().subscribe({
+      next: (response) => {
+        this.snackBar.open(
+          `Refreshed ${response.deviceCount} devices`, 
+          'Dismiss', 
+          { duration: 3000 }
+        );
+        this.loading = false;
+      },
+      error: (error) => {
+        this.snackBar.open(
+          'Failed to refresh devices', 
+          'Dismiss', 
+          { 
+            duration: 3000,
+            panelClass: 'error-snackbar'
+          }
+        );
+        this.loading = false;
+        console.error('Device refresh error:', error);
+      }
+    });
+  }
+
+  getDoorSecurityIcon(): string {
+    if (!this.dashboardState?.doors) return 'lock_open';
+    
+    const openDoors = this.dashboardState.doors.devices.filter(device => 
+      device.state === 'open' || device.state === 'on' || device.state === 'unlocked'
+    );
+    
+    return openDoors.length === 0 ? 'lock' : 'lock_open';
+  }
+
+  getDoorSecurityTitle(): string {
+    if (!this.dashboardState?.doors) return 'Door Status';
+    
+    const openDoors = this.dashboardState.doors.devices.filter(device => 
+      device.state === 'open' || device.state === 'on' || device.state === 'unlocked'
+    );
+    
+    if (openDoors.length === 0) {
+      return 'All Secure';
+    } else if (openDoors.length === 1) {
+      return '1 Door Open';
+    } else {
+      return `${openDoors.length} Doors Open`;
+    }
+  }
+
+  getDoorSecuritySummary(): string {
+    if (!this.dashboardState?.doors) return 'Loading...';
+    return this.dashboardState.doors.summary;
+  }
+
+  getSecurityAlertsIcon(): string {
+    if (!this.dashboardState?.security) return 'security';
+    return this.dashboardState.security.allOk ? 'shield' : 'warning';
   }
 }

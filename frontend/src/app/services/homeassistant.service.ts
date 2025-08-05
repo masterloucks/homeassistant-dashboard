@@ -23,22 +23,32 @@ export class HomeAssistantService {
         this.connected$.next(true);
       },
       error: (error) => {
-        console.error('Failed to connect to Home Assistant:', error);
-        this.connected$.next(false);
+        if (error.status === 503) {
+          console.log('MCP connection initializing, will retry automatically...');
+          // Don't mark as disconnected, let periodic updates handle retry
+        } else {
+          console.error('Failed to connect to Home Assistant:', error);
+          this.connected$.next(false);
+        }
       }
     });
   }
 
   private startPeriodicUpdate(): void {
-    interval(5000).subscribe(() => {
+    interval(100).subscribe(() => {
       this.loadDashboardState().subscribe({
         next: (state) => {
           this.dashboardState$.next(state);
           this.connected$.next(true);
         },
         error: (error) => {
-          console.error('Update failed:', error);
-          this.connected$.next(false);
+          if (error.status === 503) {
+            console.log('MCP connection initializing, retrying...');
+            // Don't mark as disconnected during initialization
+          } else {
+            console.error('Update failed:', error);
+            this.connected$.next(false);
+          }
         }
       });
     });
@@ -78,5 +88,9 @@ export class HomeAssistantService {
 
   activateScene(sceneId: string): Observable<any> {
     return this.http.post(`${this.apiUrl}/activate-scene`, { sceneId });
+  }
+
+  refreshDevices(): Observable<any> {
+    return this.http.post(`${this.apiUrl}/refresh-devices`, {});
   }
 }

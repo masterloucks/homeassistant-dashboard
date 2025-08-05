@@ -1,9 +1,4 @@
 <div class="dashboard-wrapper">
-  <!-- Connection Status -->
-  <div class="connection-status" [class.connected]="connected" [class.disconnected]="!connected">
-    <mat-icon>{{ connected ? 'wifi' : 'wifi_off' }}</mat-icon>
-    <span>{{ connected ? 'Connected to Home Assistant' : 'Disconnected' }}</span>
-  </div>
 
   <!-- Loading State -->
   <div *ngIf="loading" class="loading-container">
@@ -13,6 +8,35 @@
 
   <!-- Dashboard Content -->
   <div *ngIf="!loading && dashboardState" class="dashboard-content">
+    
+    <!-- Above The Fold Section -->
+    <div class="above-fold-section">
+      
+      <!-- Critical Status Summary (Top Left) -->
+      <div class="critical-status-section">
+        <div class="status-summary-card">
+          <mat-icon class="status-icon">{{ getDoorSecurityIcon() }}</mat-icon>
+          <div class="status-info">
+            <h3 class="status-title">{{ getDoorSecurityTitle() }}</h3>
+            <p class="status-text">{{ getDoorSecuritySummary() }}</p>
+          </div>
+        </div>
+        
+        <div class="status-summary-card">
+          <mat-icon class="status-icon">{{ getSecurityAlertsIcon() }}</mat-icon>
+          <div class="status-info">
+            <h3 class="status-title">Security</h3>
+            <p class="status-text">{{ dashboardState.security.summary }}</p>
+          </div>
+        </div>
+      </div>
+      
+      <!-- Camera Grid (Top Right) -->
+      <div class="camera-section">
+        <app-camera-grid></app-camera-grid>
+      </div>
+      
+    </div>
     
     <!-- Summary Cards -->
     <div class="summary-section">
@@ -28,6 +52,10 @@
           <div class="summary-info">
             <h3 class="summary-title">{{ group.category }}</h3>
             <p class="summary-text">{{ group.summary }}</p>
+            <div *ngIf="group.allOk" class="quiet-indicator">
+              <mat-icon class="quiet-icon">check_circle_outline</mat-icon>
+              <span class="quiet-text">All Quiet since {{ getLastActivityTime(group) }}</span>
+            </div>
           </div>
         </div>
       </div>
@@ -145,6 +173,23 @@
       <mat-icon>refresh</mat-icon>
       Retry Connection
     </button>
+  </div>
+
+  <!-- Dashboard Footer -->
+  <div class="dashboard-footer">
+    <div class="footer-content">
+      <div class="device-stats" (click)="onDeviceCountClick()">
+        <mat-icon>devices</mat-icon>
+        <span class="device-count">{{ getDeviceCount() }} devices</span>
+        <span class="last-update">Last update: {{ getLastUpdateTime() }}</span>
+      </div>
+      <div class="connection-info">
+        <mat-icon [class.status-ok]="connected" [class.status-error]="!connected">
+          {{ connected ? 'cloud_done' : 'cloud_off' }}
+        </mat-icon>
+        <span class="connection-text">Backend {{ connected ? 'Connected' : 'Disconnected' }}</span>
+      </div>
+    </div>
   </div>
 
 </div>

@@ -1,0 +1,113 @@
+<div class="camera-grid-container">
+  
+  <!-- Large Camera Display -->
+  <div class="large-camera-container">
+    <div class="camera-feed large-feed" 
+         *ngIf="getCurrentLargeCamera(); let largeCamera"
+         (click)="openCameraOverlay(largeCamera)"
+         title="Click to view fullscreen">
+      <!-- MJPEG Image Stream -->
+      <img class="video-stream large-stream"
+           *ngIf="largeCamera.config.streamUrl"
+           [src]="largeCamera.config.streamUrl"
+           [alt]="largeCamera.config.name + ' camera feed'"
+           (error)="onVideoError($event, largeCamera.config.name)"
+           (load)="onVideoCanPlay(largeCamera.config.name)">
+      
+      <!-- Placeholder when stream disabled -->
+      <div class="stream-placeholder" *ngIf="!largeCamera.config.streamUrl">
+        <mat-icon class="stream-icon">videocam_off</mat-icon>
+        <span class="camera-name">{{ largeCamera.config.name }}</span>
+        <span class="stream-status">Camera Disabled</span>
+      </div>
+      
+      <!-- Stream Overlay Info -->
+      <div class="stream-overlay large-overlay">
+        <span class="camera-name">{{ largeCamera.config.name }}</span>
+        <span class="stream-status" [class.alerting]="largeCamera.isAlerting">
+          {{ largeCamera.isAlerting ? 'DETECTED' : 'MONITORING' }}
+        </span>
+      </div>
+      
+      <!-- Fallback for stream errors -->
+      <div class="stream-fallback" 
+           *ngIf="getStreamError(largeCamera.config.name)">
+        <mat-icon class="stream-icon">videocam_off</mat-icon>
+        <span class="error-text">Stream Unavailable</span>
+        <span class="camera-name">{{ largeCamera.config.name }}</span>
+      </div>
+    </div>
+    
+    <!-- Large Camera Alert Indicator -->
+    <div class="alert-indicator" 
+         *ngIf="getCurrentLargeCamera()?.isAlerting"
+         class="active">
+      <mat-icon>warning</mat-icon>
+    </div>
+  </div>
+
+  <!-- Small Camera Grid -->
+  <div class="small-cameras-grid">
+    <div class="small-camera-container" 
+         *ngFor="let cameraState of getAlwaysVisibleCameras(); trackBy: trackByCameraName"
+         [class.alerting]="cameraState.isAlerting"
+         (click)="openCameraOverlay(cameraState)"
+         title="Click to view fullscreen">
+      
+      <!-- Small Camera Feed -->
+      <div class="camera-feed small-feed">
+        <!-- MJPEG Image Stream -->
+        <img class="video-stream small-stream"
+             *ngIf="cameraState.config.streamUrl"
+             [src]="cameraState.config.streamUrl"
+             [alt]="cameraState.config.name + ' camera feed'"
+             (error)="onVideoError($event, cameraState.config.name)"
+             (load)="onVideoCanPlay(cameraState.config.name)">
+        
+        <!-- Placeholder when stream disabled -->
+        <div class="stream-placeholder small" *ngIf="!cameraState.config.streamUrl">
+          <mat-icon class="stream-icon small">videocam_off</mat-icon>
+          <span class="camera-name small">{{ cameraState.config.name }}</span>
+        </div>
+        
+        <!-- Small Stream Overlay -->
+        <div class="stream-overlay small-overlay">
+          <span class="camera-name small">{{ cameraState.config.name }}</span>
+        </div>
+        
+        <!-- Fallback for stream errors -->
+        <div class="stream-fallback small" 
+             *ngIf="getStreamError(cameraState.config.name)">
+          <mat-icon class="stream-icon small">videocam_off</mat-icon>
+          <span class="camera-name small">{{ cameraState.config.name }}</span>
+        </div>
+      </div>
+
+      <!-- Small Camera Alert Indicator -->
+      <div class="alert-indicator small" 
+           *ngIf="cameraState.isAlerting">
+        <mat-icon>fiber_manual_record</mat-icon>
+      </div>
+    </div>
+  </div>
+
+  <!-- Camera Status Icons Row -->
+  <div class="camera-icons-row">
+    <div class="camera-icon-item" 
+         *ngFor="let cameraState of cameraStates; trackBy: trackByCameraName"
+         [class.alerting]="cameraState.isAlerting"
+         (click)="onCameraIconClick(cameraState)">
+      
+      <mat-icon class="camera-icon" 
+                [class.detected]="cameraState.isAlerting">
+        {{ getCameraIcon(cameraState) }}
+      </mat-icon>
+      
+      <div class="camera-info">
+        <span class="camera-label">{{ cameraState.config.name }}</span>
+        <span class="last-changed">{{ getLastChangedText(cameraState) }}</span>
+      </div>
+    </div>
+  </div>
+  
+</div>

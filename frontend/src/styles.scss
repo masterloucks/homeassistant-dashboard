@@ -142,3 +142,19 @@ html, body {
     font-size: 56px;
   }
 }
+
+// Camera Overlay Dialog Styles
+.camera-overlay-dialog {
+  .mat-mdc-dialog-container {
+    background-color: #1a1a1a !important;
+    color: #ffffff !important;
+    border: 1px solid rgba(255, 255, 255, 0.1) !important;
+    border-radius: 16px !important;
+    padding: 0 !important;
+    overflow: hidden !important;
+  }
+  
+  .mdc-dialog__surface {
+    background-color: #1a1a1a !important;
+  }
+}

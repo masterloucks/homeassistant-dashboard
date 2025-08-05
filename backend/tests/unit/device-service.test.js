@@ -10,44 +10,97 @@ jest.mock('../../src/mcp-client', () => ({
   isConnected: jest.fn(() => true)
 }));
 
+// Mock the device cache to avoid real MCP calls and timers
+jest.mock('../../src/device-cache', () => ({
+  getCachedDevices: jest.fn(),
+  getDeviceCount: jest.fn(),
+  getLastUpdateTime: jest.fn(),
+  getTimeSinceLastUpdate: jest.fn(),
+  formatMountainTime: jest.fn(),
+  manualRefresh: jest.fn(),
+  getPerformanceStats: jest.fn()
+}));
+
+const deviceCache = require('../../src/device-cache');
+
 describe('DeviceService', () => {
   beforeEach(() => {
     // Reset any cached state
     DeviceService.lastKnownState = null;
     jest.clearAllMocks();
+    
+    // Setup default mock responses for device cache
+    deviceCache.getCachedDevices.mockReturnValue(fixtures.parsedDevices);
+    deviceCache.getDeviceCount.mockReturnValue(5);
+    deviceCache.getLastUpdateTime.mockReturnValue(Date.now());
+    deviceCache.getTimeSinceLastUpdate.mockReturnValue(1000);
+    deviceCache.formatMountainTime.mockReturnValue('10:30:45 PM MST');
+    deviceCache.getPerformanceStats.mockReturnValue({
+      totalPolls: 10,
+      avgResponseTime: 150,
+      errorCount: 0,
+      filteredEntityCount: 100,
+      totalEntityCount: 500
+    });
   });
 
-  describe('parseLiveContext', () => {
-    it('should parse MCP live context response correctly', () => {
-      const result = DeviceService.parseLiveContext(fixtures.mockMCPResponse);
+  // Remove parseLiveContext tests since method moved to DeviceCache
+  describe('getDashboardState', () => {
+    it('should return dashboard state with metadata', async () => {
+      const result = await DeviceService.getDashboardState();
       
-      expect(result).toHaveLength(5);
-      expect(result[0]).toEqual(fixtures.parsedDevices[0]);
-      expect(result[1]).toEqual(fixtures.parsedDevices[1]);
+      expect(result).toHaveProperty('doors');
+      expect(result).toHaveProperty('lights');  
+      expect(result).toHaveProperty('climate');
+      expect(result).toHaveProperty('security');
+      expect(result).toHaveProperty('media');
+      expect(result).toHaveProperty('metadata');
+      
+      expect(result.metadata.deviceCount).toBe(5);
+      expect(result.metadata.performanceStats).toBeDefined();
     });
 
-    it('should handle empty or invalid context data', () => {
-      const result = DeviceService.parseLiveContext(null);
-      expect(result).toEqual([]);
+    it('should handle cache errors gracefully', async () => {
+      deviceCache.getCachedDevices.mockImplementation(() => {
+        throw new Error('Cache error');
+      });
 
-      const result2 = DeviceService.parseLiveContext({ result: '' });
-      expect(result2).toEqual([]);
+      const result = await DeviceService.getDashboardState();
+      
+      // Should return default state on error
+      expect(result).toHaveProperty('doors');
+      expect(result.doors.summary).toBe('Unable to connect to Home Assistant');
     });
+  });
 
-    it('should filter out unavailable devices', () => {
-      const contextWithUnavailable = {
-        result: `Live Context: Test
-- names: Available Light
-  domain: light
-  state: 'on'
-- names: Unavailable Light
-  domain: light
-  state: 'unavailable'`
+  describe('manualDeviceRefresh', () => {
+    it('should trigger manual refresh and return updated state', async () => {
+      const mockRefreshResult = {
+        deviceCount: 10,
+        lastUpdate: Date.now(),
+        performanceStats: {
+          totalPolls: 5,
+          avgResponseTime: 120
+        }
       };
+      
+      deviceCache.manualRefresh.mockResolvedValue(mockRefreshResult);
+      
+      const result = await DeviceService.manualDeviceRefresh();
+      
+      expect(result.success).toBe(true);
+      expect(result.message).toContain('10 devices');
+      expect(result.dashboardState).toHaveProperty('doors');
+      expect(deviceCache.manualRefresh).toHaveBeenCalledTimes(1);
+    });
 
-      const result = DeviceService.parseLiveContext(contextWithUnavailable);
-      expect(result).toHaveLength(1);
-      expect(result[0].name).toBe('Available Light');
+    it('should handle refresh errors', async () => {
+      deviceCache.manualRefresh.mockRejectedValue(new Error('Refresh failed'));
+      
+      const result = await DeviceService.manualDeviceRefresh();
+      
+      expect(result.success).toBe(false);
+      expect(result.message).toBe('Refresh failed');
     });
   });
 
